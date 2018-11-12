@@ -222,6 +222,7 @@ public class Kafka011ITCase extends KafkaConsumerTestBase {
 				return (int) (next % 3);
 			}
 		}));
+		prod.skipAbortTransactionsForTesting();
 		prod.setWriteTimestampToKafka(true);
 
 		streamWithTimestamps.addSink(prod).setParallelism(3);

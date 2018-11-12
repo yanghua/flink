@@ -161,24 +161,28 @@ public class KafkaTestEnvironmentImpl extends KafkaTestEnvironment {
 
 	@Override
 	public <T> StreamSink<T> getProducerSink(String topic, KeyedSerializationSchema<T> serSchema, Properties props, FlinkKafkaPartitioner<T> partitioner) {
-		return new StreamSink<>(new FlinkKafkaProducer011<>(
+		FlinkKafkaProducer011 prod = new FlinkKafkaProducer011<>(
 			topic,
 			serSchema,
 			props,
 			Optional.ofNullable(partitioner),
 			producerSemantic,
-			FlinkKafkaProducer011.DEFAULT_KAFKA_PRODUCERS_POOL_SIZE));
+			FlinkKafkaProducer011.DEFAULT_KAFKA_PRODUCERS_POOL_SIZE);
+		prod.skipAbortTransactionsForTesting();
+		return new StreamSink<>(prod);
 	}
 
 	@Override
 	public <T> DataStreamSink<T> produceIntoKafka(DataStream<T> stream, String topic, KeyedSerializationSchema<T> serSchema, Properties props, FlinkKafkaPartitioner<T> partitioner) {
-		return stream.addSink(new FlinkKafkaProducer011<>(
+		FlinkKafkaProducer011 prod = new FlinkKafkaProducer011<>(
 			topic,
 			serSchema,
 			props,
 			Optional.ofNullable(partitioner),
 			producerSemantic,
-			FlinkKafkaProducer011.DEFAULT_KAFKA_PRODUCERS_POOL_SIZE));
+			FlinkKafkaProducer011.DEFAULT_KAFKA_PRODUCERS_POOL_SIZE);
+		prod.skipAbortTransactionsForTesting();
+		return stream.addSink(prod);
 	}
 
 	@Override
@@ -187,6 +191,7 @@ public class KafkaTestEnvironmentImpl extends KafkaTestEnvironment {
 			topic, serSchema, props, Optional.of(new FlinkFixedPartitioner<>()), producerSemantic, FlinkKafkaProducer011.DEFAULT_KAFKA_PRODUCERS_POOL_SIZE);
 
 		prod.setWriteTimestampToKafka(true);
+		prod.skipAbortTransactionsForTesting();
 
 		return stream.addSink(prod);
 	}

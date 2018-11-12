@@ -103,7 +103,7 @@ public class FlinkKafkaProducer011ITCase extends KafkaTestBase {
 		Optional<Integer> initialActiveThreads = Optional.empty();
 		for (int i = 0; i < allowedEpsilonThreadCountGrow * 2; i++) {
 			try (OneInputStreamOperatorTestHarness<Integer, Object> testHarness1 =
-					createTestHarness(topic, 1, 1, 0, semantic)) {
+					createTestHarness(topic, 1, 1, 0, semantic, true)) {
 				testHarness1.setup();
 				testHarness1.open();
 			}
@@ -219,6 +219,7 @@ public class FlinkKafkaProducer011ITCase extends KafkaTestBase {
 			integerKeyedSerializationSchema,
 			properties,
 			EXACTLY_ONCE);
+		kafkaProducer.skipAbortTransactionsForTesting();
 
 		OneInputStreamOperatorTestHarness<Integer, Object> testHarness1 = new OneInputStreamOperatorTestHarness<>(
 			new StreamSink<>(kafkaProducer),
@@ -369,7 +370,8 @@ public class FlinkKafkaProducer011ITCase extends KafkaTestBase {
 				preScaleDownParallelism,
 				preScaleDownParallelism,
 				subtaskIndex,
-				EXACTLY_ONCE);
+				EXACTLY_ONCE,
+				false);
 
 			preScaleDownOperator.setup();
 			preScaleDownOperator.open();
@@ -384,7 +386,7 @@ public class FlinkKafkaProducer011ITCase extends KafkaTestBase {
 		// there might not be any close)
 
 		// After previous failure simulate restarting application with smaller parallelism
-		OneInputStreamOperatorTestHarness<Integer, Object> postScaleDownOperator1 = createTestHarness(topic, 1, 1, 0, EXACTLY_ONCE);
+		OneInputStreamOperatorTestHarness<Integer, Object> postScaleDownOperator1 = createTestHarness(topic, 1, 1, 0, EXACTLY_ONCE, false);
 
 		postScaleDownOperator1.setup();
 		postScaleDownOperator1.open();
@@ -484,7 +486,7 @@ public class FlinkKafkaProducer011ITCase extends KafkaTestBase {
 
 		for (int subtaskIndex = 0; subtaskIndex < parallelism; subtaskIndex++) {
 			OneInputStreamOperatorTestHarness<Integer, Object> testHarness =
-				createTestHarness(topic, maxParallelism, parallelism, subtaskIndex, EXACTLY_ONCE);
+				createTestHarness(topic, maxParallelism, parallelism, subtaskIndex, EXACTLY_ONCE, true);
 			testHarnesses.add(testHarness);
 
 			testHarness.setup();
@@ -655,7 +657,7 @@ public class FlinkKafkaProducer011ITCase extends KafkaTestBase {
 	private OneInputStreamOperatorTestHarness<Integer, Object> createTestHarness(
 		String topic,
 		Semantic semantic) throws Exception {
-		return createTestHarness(topic, 1, 1, 0, semantic);
+		return createTestHarness(topic, 1, 1, 0, semantic, true);
 	}
 
 	private OneInputStreamOperatorTestHarness<Integer, Object> createTestHarness(
@@ -663,7 +665,8 @@ public class FlinkKafkaProducer011ITCase extends KafkaTestBase {
 			int maxParallelism,
 			int parallelism,
 			int subtaskIndex,
-			Semantic semantic) throws Exception {
+			Semantic semantic,
+			boolean skipAbortTransactions) throws Exception {
 		Properties properties = createProperties();
 
 		FlinkKafkaProducer011<Integer> kafkaProducer = new FlinkKafkaProducer011<>(
@@ -671,6 +674,9 @@ public class FlinkKafkaProducer011ITCase extends KafkaTestBase {
 			integerKeyedSerializationSchema,
 			properties,
 			semantic);
+		if (skipAbortTransactions) {
+			kafkaProducer.skipAbortTransactionsForTesting();
+		}
 
 		return new OneInputStreamOperatorTestHarness<>(
 			new StreamSink<>(kafkaProducer),

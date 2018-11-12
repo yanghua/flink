@@ -241,6 +241,9 @@ public class FlinkKafkaProducer011<IN>
 	 */
 	private Semantic semantic;
 
+	// for testing to skip the abortTransactions method so that we can reduce many test duration
+	private boolean allowAbortTransactions = true;
+
 	// -------------------------------- Runtime fields ------------------------------------------
 
 	/** The callback than handles error propagation or logging callbacks. */
@@ -831,7 +834,9 @@ public class FlinkKafkaProducer011<IN>
 				// (2) previous execution has failed before first checkpoint completed
 				//
 				// in case of (2) we have to abort all previous transactions
-				abortTransactions(transactionalIdsGenerator.generateIdsToAbort());
+				if (allowAbortTransactions) {
+					abortTransactions(transactionalIdsGenerator.generateIdsToAbort());
+				}
 			} else {
 				nextTransactionalIdHint = transactionalIdHints.get(0);
 			}
@@ -864,6 +869,11 @@ public class FlinkKafkaProducer011<IN>
 		cleanUpUserContext();
 		resetAvailableTransactionalIdsPool(getUserContext().get().transactionalIds);
 		LOG.info("Recovered transactionalIds {}", getUserContext().get().transactionalIds);
+	}
+
+	@VisibleForTesting
+	public void skipAbortTransactionsForTesting() {
+		this.allowAbortTransactions = false;
 	}
 
 	/**
