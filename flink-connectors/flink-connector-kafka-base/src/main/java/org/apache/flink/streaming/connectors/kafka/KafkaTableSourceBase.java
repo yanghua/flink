@@ -26,14 +26,14 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.connectors.kafka.config.StartupMode;
 import org.apache.flink.streaming.connectors.kafka.internals.KafkaTopicPartition;
 import org.apache.flink.table.api.TableSchema;
-import org.apache.flink.table.api.Types;
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.sources.DefinedFieldMapping;
 import org.apache.flink.table.sources.DefinedProctimeAttribute;
 import org.apache.flink.table.sources.DefinedRowtimeAttributes;
-import org.apache.flink.table.sources.RowtimeAttributeDescriptor;
+import org.apache.flink.table.descriptors.RowtimeAttributeDescriptor;
 import org.apache.flink.table.sources.StreamTableSource;
-import org.apache.flink.table.util.TableConnectorUtil;
+import org.apache.flink.table.utils.TableConnectorUtil;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.Preconditions;
 
@@ -289,7 +289,7 @@ public abstract class KafkaTableSourceBase implements
 			Optional<TypeInformation<?>> tpe = schema.getFieldType(attribute);
 			if (!tpe.isPresent()) {
 				throw new ValidationException("Processing time attribute '" + attribute + "' is not present in TableSchema.");
-			} else if (tpe.get() != Types.SQL_TIMESTAMP()) {
+			} else if (tpe.get() != Types.SQL_TIMESTAMP) {
 				throw new ValidationException("Processing time attribute '" + attribute + "' is not of type SQL_TIMESTAMP.");
 			}
 			return attribute;
@@ -309,7 +309,7 @@ public abstract class KafkaTableSourceBase implements
 			Optional<TypeInformation<?>> tpe = schema.getFieldType(rowtimeAttribute);
 			if (!tpe.isPresent()) {
 				throw new ValidationException("Rowtime attribute '" + rowtimeAttribute + "' is not present in TableSchema.");
-			} else if (tpe.get() != Types.SQL_TIMESTAMP()) {
+			} else if (tpe.get() != Types.SQL_TIMESTAMP) {
 				throw new ValidationException("Rowtime attribute '" + rowtimeAttribute + "' is not of type SQL_TIMESTAMP.");
 			}
 		}

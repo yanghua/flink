@@ -22,6 +22,7 @@ import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.serialization.DeserializationSchema;
 import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
@@ -35,10 +36,7 @@ import org.apache.flink.streaming.connectors.kafka.internals.KafkaTopicPartition
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkFixedPartitioner;
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaPartitioner;
 import org.apache.flink.table.api.TableSchema;
-import org.apache.flink.table.api.Types;
 import org.apache.flink.table.descriptors.Kafka;
-import org.apache.flink.table.descriptors.Rowtime;
-import org.apache.flink.table.descriptors.Schema;
 import org.apache.flink.table.descriptors.TestTableDescriptor;
 import org.apache.flink.table.factories.StreamTableSinkFactory;
 import org.apache.flink.table.factories.StreamTableSourceFactory;
@@ -47,11 +45,8 @@ import org.apache.flink.table.factories.utils.TestDeserializationSchema;
 import org.apache.flink.table.factories.utils.TestSerializationSchema;
 import org.apache.flink.table.factories.utils.TestTableFormat;
 import org.apache.flink.table.sinks.TableSink;
-import org.apache.flink.table.sources.RowtimeAttributeDescriptor;
+import org.apache.flink.table.descriptors.RowtimeAttributeDescriptor;
 import org.apache.flink.table.sources.TableSource;
-import org.apache.flink.table.sources.TableSourceUtil;
-import org.apache.flink.table.sources.tsextractors.ExistingField;
-import org.apache.flink.table.sources.wmstrategies.AscendingTimestamps;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.TestLogger;
 
@@ -104,10 +99,10 @@ public abstract class KafkaTableSourceSinkFactoryTestBase extends TestLogger {
 		// prepare parameters for Kafka table source
 
 		final TableSchema schema = TableSchema.builder()
-			.field(FRUIT_NAME, Types.STRING())
-			.field(COUNT, Types.DECIMAL())
-			.field(EVENT_TIME, Types.SQL_TIMESTAMP())
-			.field(PROC_TIME, Types.SQL_TIMESTAMP())
+			.field(FRUIT_NAME, Types.STRING)
+			.field(COUNT, Types.BIG_DEC)
+			.field(EVENT_TIME, Types.SQL_TIMESTAMP)
+			.field(PROC_TIME, Types.SQL_TIMESTAMP)
 			.build();
 
 		final List<RowtimeAttributeDescriptor> rowtimeAttributeDescriptors = Collections.singletonList(
@@ -125,9 +120,9 @@ public abstract class KafkaTableSourceSinkFactoryTestBase extends TestLogger {
 
 		final TestDeserializationSchema deserializationSchema = new TestDeserializationSchema(
 			TableSchema.builder()
-				.field(NAME, Types.STRING())
-				.field(COUNT, Types.DECIMAL())
-				.field(TIME, Types.SQL_TIMESTAMP())
+				.field(NAME, Types.STRING)
+				.field(COUNT, Types.BIG_DEC)
+				.field(TIME, Types.SQL_TIMESTAMP)
 				.build()
 				.toRowType()
 		);
@@ -157,11 +152,11 @@ public abstract class KafkaTableSourceSinkFactoryTestBase extends TestLogger {
 			.withFormat(new TestTableFormat())
 			.withSchema(
 				new Schema()
-					.field(FRUIT_NAME, Types.STRING()).from(NAME)
+					.field(FRUIT_NAME, Types.STRING).from(NAME)
 					.field(COUNT, Types.DECIMAL()) // no from so it must match with the input
-					.field(EVENT_TIME, Types.SQL_TIMESTAMP()).rowtime(
+					.field(EVENT_TIME, Types.SQL_TIMESTAMP).rowtime(
 						new Rowtime().timestampsFromField(TIME).watermarksPeriodicAscending())
-					.field(PROC_TIME, Types.SQL_TIMESTAMP()).proctime())
+					.field(PROC_TIME, Types.SQL_TIMESTAMP).proctime())
 			.inAppendMode();
 
 		final Map<String, String> propertiesMap = testDesc.toProperties();
@@ -185,9 +180,9 @@ public abstract class KafkaTableSourceSinkFactoryTestBase extends TestLogger {
 		// prepare parameters for Kafka table sink
 
 		final TableSchema schema = TableSchema.builder()
-			.field(FRUIT_NAME, Types.STRING())
-			.field(COUNT, Types.DECIMAL())
-			.field(EVENT_TIME, Types.SQL_TIMESTAMP())
+			.field(FRUIT_NAME, Types.STRING)
+			.field(COUNT, Types.BIG_DEC)
+			.field(EVENT_TIME, Types.SQL_TIMESTAMP)
 			.build();
 
 		final KafkaTableSinkBase expected = getExpectedKafkaTableSink(
@@ -209,9 +204,9 @@ public abstract class KafkaTableSourceSinkFactoryTestBase extends TestLogger {
 			.withFormat(new TestTableFormat())
 			.withSchema(
 				new Schema()
-					.field(FRUIT_NAME, Types.STRING())
+					.field(FRUIT_NAME, Types.STRING)
 					.field(COUNT, Types.DECIMAL())
-					.field(EVENT_TIME, Types.SQL_TIMESTAMP()))
+					.field(EVENT_TIME, Types.SQL_TIMESTAMP))
 			.inAppendMode();
 
 		final Map<String, String> propertiesMap = testDesc.toProperties();
