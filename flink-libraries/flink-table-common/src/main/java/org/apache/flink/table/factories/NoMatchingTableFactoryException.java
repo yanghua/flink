@@ -35,11 +35,11 @@ public class NoMatchingTableFactoryException extends RuntimeException {
 		Map<String, String> properties,
 		Throwable cause) {
 
-		super("Could not find a suitable table factory for '"
-			+ factoryClass.getName() + "' in the classpath.\n Reason: "
-			+ message + "\n The following properties are requested:"
-			+ DescriptorProperties.toString(properties) + "\nThe following factories have been considered:"
-			+ factories.stream().map(item -> item.getClass().getName()).collect(Collectors.joining("\n")),
+		super("Could not find a suitable table factory for '" + factoryClass.getName() + "' in the classpath.\n " +
+				"Reason: \n" + message +
+				"The following properties are requested: \n" + DescriptorProperties.toString(properties) +
+				"The following factories have been considered: \n" +
+			factories.stream().map(item -> item.getClass().getName()).collect(Collectors.joining("\n")),
 			cause);
 	}
 

@@ -35,12 +35,14 @@ public class AmbiguousTableFactoryException extends RuntimeException {
 		Map<String, String> properties,
 		Throwable cause) {
 
-		super("More than one suitable table factory for '"
-				+ factoryClass.getName() + "' could be found in the classpath. The following factories match: "
-				+ matchingFactories.stream().map(item -> item.getClass().getName()).collect(Collectors.joining("\n"))
-				+ "The following properties are requested:"
-				+ DescriptorProperties.toString(properties) + " The following factories have been considered: "
-				+ factories.stream().map(item -> item.getClass().getName()).collect(Collectors.joining("\n")),
+		super("More than one suitable table factory for '" +
+				factoryClass.getName() + "' could be found in the classpath. \n" +
+				"The following factories match: \n" +
+				matchingFactories.stream().map(item -> item.getClass().getName()).collect(Collectors.joining("\n")) +
+				"The following properties are requested: \n" +
+				DescriptorProperties.toString(properties) +
+				"The following factories have been considered: \n" +
+				factories.stream().map(item -> item.getClass().getName()).collect(Collectors.joining("\n")),
 			cause);
 	}
 
