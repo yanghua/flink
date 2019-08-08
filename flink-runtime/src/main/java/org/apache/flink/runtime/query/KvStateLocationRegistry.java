@@ -73,6 +73,13 @@ public class KvStateLocationRegistry {
 	}
 
 	/**
+	 * Returns the {@link Map<String, KvStateLocation>} map contains all registered KvState information.
+	 */
+	public Map<String, KvStateLocation> getKvStateLocations() {
+		return lookupTable;
+	}
+
+	/**
 	 * Notifies the registry about a registered KvState instance.
 	 *
 	 * @param jobVertexId JobVertexID the KvState instance belongs to

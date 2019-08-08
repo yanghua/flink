@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.taskexecutor;
 
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.configuration.QueryableStateOptions;
 import org.apache.flink.util.NetUtils;
 
@@ -31,9 +32,13 @@ import static org.apache.flink.util.Preconditions.checkArgument;
  */
 public class QueryableStateConfiguration {
 
+	private final String proxyMetaHost;
+
 	private final Iterator<Integer> proxyPortRange;
 
 	private final Iterator<Integer> qserverPortRange;
+
+	private final Iterator<Integer> qproxymetaserverPortRange;
 
 	private final int numProxyThreads;
 
@@ -43,30 +48,51 @@ public class QueryableStateConfiguration {
 
 	private final int numSQueryThreads;
 
+	private final int numProxyMetaServerThreads;
+
+	private final int numPMSQueryThreads;
+
 	public QueryableStateConfiguration(
+			String proxyMetaHost,
 			Iterator<Integer> proxyPortRange,
 			Iterator<Integer> qserverPortRange,
+			Iterator<Integer> qproxymetaserverPortRange,
 			int numProxyThreads,
 			int numPQueryThreads,
 			int numServerThreads,
-			int numSQueryThreads) {
+			int numSQueryThreads,
+			int numProxyMetaServerThreads,
+			int numPMSQueryThreads) {
 
 		checkArgument(proxyPortRange != null && proxyPortRange.hasNext());
 		checkArgument(qserverPortRange != null && qserverPortRange.hasNext());
+		checkArgument(qproxymetaserverPortRange != null && qproxymetaserverPortRange.hasNext());
+		checkArgument(qproxymetaserverPortRange != null && qproxymetaserverPortRange.hasNext());
 		checkArgument(numProxyThreads >= 0, "queryable state number of server threads must be zero or larger");
 		checkArgument(numPQueryThreads >= 0, "queryable state number of query threads must be zero or larger");
 		checkArgument(numServerThreads >= 0, "queryable state number of server threads must be zero or larger");
 		checkArgument(numSQueryThreads >= 0, "queryable state number of query threads must be zero or larger");
+		checkArgument(numProxyMetaServerThreads >= 0, "queryable state number of proxy meta server threads must be zero or larger");
+		checkArgument(numPMSQueryThreads >= 0, "queryable state number of proxy meta server query threads must be zero or larger");
 
+		this.proxyMetaHost = proxyMetaHost;
 		this.proxyPortRange = proxyPortRange;
 		this.qserverPortRange = qserverPortRange;
+		this.qproxymetaserverPortRange = qproxymetaserverPortRange;
 		this.numProxyThreads = numProxyThreads;
 		this.numPQueryThreads = numPQueryThreads;
 		this.numServerThreads = numServerThreads;
 		this.numSQueryThreads = numSQueryThreads;
+		this.numProxyMetaServerThreads = numProxyMetaServerThreads;
+		this.numPMSQueryThreads = numPMSQueryThreads;
 	}
 
 	// ------------------------------------------------------------------------
+
+
+	public String getProxyMetaHost() {
+		return proxyMetaHost;
+	}
 
 	/**
 	 * Returns the port range where the queryable state client proxy can listen.
@@ -116,6 +142,14 @@ public class QueryableStateConfiguration {
 		return numSQueryThreads;
 	}
 
+	public int numProxyMetaServerThreads() {
+		return numProxyMetaServerThreads;
+	}
+
+	public int numProxyMetaQueryThreads() {
+		return numPMSQueryThreads;
+	}
+
 	// ------------------------------------------------------------------------
 
 	@Override
@@ -125,6 +159,8 @@ public class QueryableStateConfiguration {
 				", numProxyQueryThreads=" + numPQueryThreads +
 				", numStateServerThreads=" + numServerThreads +
 				", numStateQueryThreads=" + numSQueryThreads +
+				", numProxyMetaServerThreads=" + numProxyMetaServerThreads +
+				", numProxyMetaQueryThreads=" + numPMSQueryThreads +
 				'}';
 	}
 
@@ -134,9 +170,10 @@ public class QueryableStateConfiguration {
 	 * Gets the configuration describing the queryable state as deactivated.
 	 */
 	public static QueryableStateConfiguration disabled() {
+		final Iterator<Integer> proxyMetaPorts = NetUtils.getPortRangeFromString(QueryableStateOptions.PROXY_META_SERVER_PORT_RANGE.defaultValue());
 		final Iterator<Integer> proxyPorts = NetUtils.getPortRangeFromString(QueryableStateOptions.PROXY_PORT_RANGE.defaultValue());
 		final Iterator<Integer> serverPorts = NetUtils.getPortRangeFromString(QueryableStateOptions.SERVER_PORT_RANGE.defaultValue());
-		return new QueryableStateConfiguration(proxyPorts, serverPorts, 0, 0, 0, 0);
+		return new QueryableStateConfiguration("localhost", proxyMetaPorts, proxyPorts, serverPorts, 0, 0, 0, 0, 0, 0);
 	}
 
 	/**
@@ -147,10 +184,16 @@ public class QueryableStateConfiguration {
 			return null;
 		}
 
+		final Iterator<Integer> proxyMetaPorts = NetUtils.getPortRangeFromString(
+			config.getString(QueryableStateOptions.PROXY_META_SERVER_PORT_RANGE));
+
 		final Iterator<Integer> proxyPorts = NetUtils.getPortRangeFromString(
 			config.getString(QueryableStateOptions.PROXY_PORT_RANGE));
 		final Iterator<Integer> serverPorts = NetUtils.getPortRangeFromString(
 			config.getString(QueryableStateOptions.SERVER_PORT_RANGE));
+
+		final int numProxyMetaNetworkThreads = config.getInteger(QueryableStateOptions.PROXY_META_SERVER_NETWORK_THREADS);
+		final int numProxyMetaQueryThreads = config.getInteger(QueryableStateOptions.PROXY_META_SERVER_QUERY_THREADS);
 
 		final int numProxyServerNetworkThreads = config.getInteger(QueryableStateOptions.PROXY_NETWORK_THREADS);
 		final int numProxyServerQueryThreads = config.getInteger(QueryableStateOptions.PROXY_ASYNC_QUERY_THREADS);
@@ -159,11 +202,15 @@ public class QueryableStateConfiguration {
 		final int numStateServerQueryThreads = config.getInteger(QueryableStateOptions.SERVER_ASYNC_QUERY_THREADS);
 
 		return new QueryableStateConfiguration(
+			config.getString(QueryableStateOptions.PROXY_META_SERVER_HOST),
+			proxyMetaPorts,
 			proxyPorts,
 			serverPorts,
 			numProxyServerNetworkThreads,
 			numProxyServerQueryThreads,
 			numStateServerNetworkThreads,
-			numStateServerQueryThreads);
+			numStateServerQueryThreads,
+			numProxyMetaNetworkThreads,
+			numProxyMetaQueryThreads);
 	}
 }

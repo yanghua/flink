@@ -120,7 +120,12 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 	/**
 	 * Client shared between all the test.
 	 */
-	protected static QueryableStateClient client;
+	protected static QueryableStateClient pureClient;
+
+	/**
+	 * Proxy client shared between all the test.
+	 */
+	protected static QueryableStateClient proxyClient;
 
 	protected static ClusterClient<?> clusterClient;
 
@@ -210,7 +215,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 
 					CompletableFuture<ReducingState<Tuple2<Integer, Long>>> result = getKvState(
 							deadline,
-							client,
+							pureClient,
 							jobId,
 							queryName,
 							key,
@@ -351,7 +356,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 			clusterClient.setDetached(true);
 			clusterClient.submitJob(jobGraph, AbstractQueryableStateTestBase.class.getClassLoader());
 
-			executeValueQuery(deadline, client, jobId, "hakuna", valueState, numElements);
+			executeValueQuery(deadline, pureClient, jobId, "hakuna", valueState, numElements);
 		}
 	}
 
@@ -401,7 +406,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 
 			final JobID wrongJobId = new JobID();
 
-			CompletableFuture<ValueState<Tuple2<Integer, Long>>> unknownJobFuture = client.getKvState(
+			CompletableFuture<ValueState<Tuple2<Integer, Long>>> unknownJobFuture = pureClient.getKvState(
 					wrongJobId, 						// this is the wrong job id
 					"hakuna",
 					0,
@@ -419,7 +424,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 				fail("Unexpected type of exception: " + f.getMessage());
 			}
 
-			CompletableFuture<ValueState<Tuple2<Integer, Long>>> unknownQSName = client.getKvState(
+			CompletableFuture<ValueState<Tuple2<Integer, Long>>> unknownQSName = pureClient.getKvState(
 					closableJobGraph.getJobId(),
 					"wrong-hakuna", // this is the wrong name.
 					0,
@@ -480,7 +485,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 			long expected = numElements;
 
 			// query once
-			client.getKvState(
+			pureClient.getKvState(
 					autoCancellableJob.getJobId(),
 					queryableState.getQueryableStateName(),
 					0,
@@ -490,7 +495,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 			clusterClient.setDetached(true);
 			clusterClient.submitJob(jobGraph, AbstractQueryableStateTestBase.class.getClassLoader());
 
-			executeValueQuery(deadline, client, jobId, "hakuna", valueState, expected);
+			executeValueQuery(deadline, pureClient, jobId, "hakuna", valueState, expected);
 		}
 	}
 
@@ -543,7 +548,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 			int key = 0;
 			CompletableFuture<ValueState<Tuple2<Integer, Long>>> future = getKvState(
 					deadline,
-					client,
+				pureClient,
 					jobId,
 					queryableState.getQueryableStateName(),
 					key,
@@ -608,7 +613,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 			clusterClient.setDetached(true);
 			clusterClient.submitJob(jobGraph, AbstractQueryableStateTestBase.class.getClassLoader());
 
-			executeValueQuery(deadline, client, jobId, "matata", stateDesc, numElements);
+			executeValueQuery(deadline, pureClient, jobId, "matata", stateDesc, numElements);
 		}
 	}
 
@@ -661,7 +666,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 				while (deadline.hasTimeLeft() && !success) {
 					CompletableFuture<FoldingState<Tuple2<Integer, Long>, String>> future = getKvState(
 							deadline,
-							client,
+							pureClient,
 							jobId,
 							"pumba",
 							key,
@@ -734,7 +739,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 				while (deadline.hasTimeLeft() && !success) {
 					CompletableFuture<ReducingState<Tuple2<Integer, Long>>> future = getKvState(
 							deadline,
-							client,
+							pureClient,
 							jobId,
 							"jungle",
 							key,
@@ -827,7 +832,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 				while (deadline.hasTimeLeft() && !success) {
 					CompletableFuture<MapState<Integer, Tuple2<Integer, Long>>> future = getKvState(
 							deadline,
-							client,
+							pureClient,
 							jobId,
 							"timon-queryable",
 							key,
@@ -918,7 +923,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 				while (deadline.hasTimeLeft() && !success) {
 					final CompletableFuture<ListState<Long>> future = getKvState(
 							deadline,
-							client,
+							pureClient,
 							jobId,
 							"list-queryable",
 							key,
@@ -1002,7 +1007,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 				while (deadline.hasTimeLeft() && !success) {
 					CompletableFuture<AggregatingState<Tuple2<Integer, Long>, String>> future = getKvState(
 							deadline,
-							client,
+							pureClient,
 							jobId,
 							"aggr-queryable",
 							key,

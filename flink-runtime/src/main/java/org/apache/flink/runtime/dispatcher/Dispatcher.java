@@ -25,6 +25,7 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.queryablestate.network.stats.DisabledKvStateRequestStats;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.checkpoint.Checkpoints;
 import org.apache.flink.runtime.client.JobSubmissionException;
@@ -56,12 +57,16 @@ import org.apache.flink.runtime.messages.webmonitor.JobsOverview;
 import org.apache.flink.runtime.messages.webmonitor.MultipleJobsDetails;
 import org.apache.flink.runtime.metrics.MetricNames;
 import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
+import org.apache.flink.runtime.query.KvStateLocation;
+import org.apache.flink.runtime.query.QueryableStateProxyService;
+import org.apache.flink.runtime.query.QueryableStateUtils;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.resourcemanager.ResourceOverview;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.OperatorBackPressureStatsResponse;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.FencedRpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcService;
+import org.apache.flink.runtime.taskexecutor.QueryableStateConfiguration;
 import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
@@ -76,6 +81,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -133,6 +139,8 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 
 	private CompletableFuture<Void> recoveryOperation = CompletableFuture.completedFuture(null);
 
+	private QueryableStateProxyService queryableStateProxyService;
+
 	public Dispatcher(
 			RpcService rpcService,
 			String endpointId,
@@ -177,6 +185,16 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 		this.jobManagerRunnerFactory = Preconditions.checkNotNull(jobManagerRunnerFactory);
 
 		this.jobManagerTerminationFutures = new HashMap<>(2);
+
+		QueryableStateConfiguration qsConfig = QueryableStateConfiguration.fromConfiguration(configuration);
+
+		this.queryableStateProxyService = QueryableStateUtils.createQueryableStateProxyService(
+			InetAddress.getByName(getHostname()),
+			qsConfig.getProxyPortRange(),
+			qsConfig.numProxyMetaServerThreads(),
+			qsConfig.numProxyMetaQueryThreads(),
+			new DisabledKvStateRequestStats());
+		this.queryableStateProxyService.setDispatcherGateway(this);
 	}
 
 	//------------------------------------------------------
@@ -202,6 +220,12 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 			registerDispatcherMetrics(jobManagerMetricGroup);
 		} catch (Exception e) {
 			handleStartDispatcherServicesException(e);
+		}
+
+		try {
+			queryableStateProxyService.start();
+		} catch (Throwable throwable) {
+			log.warn("Starting queryable state proxy service failed .", throwable);
 		}
 	}
 
@@ -249,6 +273,8 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 		} catch (Exception e) {
 			exception = ExceptionUtils.firstOrSuppressed(e, exception);
 		}
+
+		queryableStateProxyService.shutdown();
 
 		jobManagerMetricGroup.close();
 
@@ -1083,5 +1109,23 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId> impleme
 				onFatalError(new DispatcherException(String.format("Could not remove job %s.", jobId), e));
 			}
 		});
+	}
+
+	@Override
+	public CompletableFuture<KvStateLocation> requestKvStateLocation(JobID jobId, String registrationName) {
+		if (!jobManagerRunnerFutures.containsKey(jobId)) {
+			return CompletableFuture.completedFuture(null);
+		}
+
+		final CompletableFuture<JobManagerRunner> jobManagerRunnerFuture = jobManagerRunnerFutures.get(jobId);
+		final JobManagerRunner currentJobManagerRunner = jobManagerRunnerFuture != null ? jobManagerRunnerFuture.getNow(null) : null;
+		if (currentJobManagerRunner != null) {
+			JobMasterGateway gateway = currentJobManagerRunner.getLeaderGatewayFuture().getNow(null);
+			if (gateway != null) {
+				return gateway.requestKvStateLocation(jobId, registrationName);
+			}
+		}
+
+		return CompletableFuture.completedFuture(null);
 	}
 }

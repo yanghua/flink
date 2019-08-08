@@ -77,7 +77,7 @@ public class HAQueryableStateFsBackendITCase extends AbstractQueryableStateTestB
 
 		miniClusterResource.before();
 
-		client = new QueryableStateClient("localhost", QS_PROXY_PORT_RANGE_START);
+		pureClient = new QueryableStateClient("localhost", QS_PROXY_PORT_RANGE_START);
 
 		clusterClient = miniClusterResource.getClusterClient();
 	}
@@ -86,7 +86,7 @@ public class HAQueryableStateFsBackendITCase extends AbstractQueryableStateTestB
 	public static void tearDown() throws Exception {
 		miniClusterResource.after();
 
-		client.shutdownAndWait();
+		pureClient.shutdownAndWait();
 
 		zkServer.stop();
 		zkServer.close();

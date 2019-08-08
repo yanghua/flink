@@ -66,14 +66,14 @@ public class NonHAQueryableStateRocksDBBackendITCase extends AbstractQueryableSt
 
 	@BeforeClass
 	public static void setup() throws Exception {
-		client = new QueryableStateClient("localhost", QS_PROXY_PORT_RANGE_START);
+		pureClient = new QueryableStateClient("localhost", QS_PROXY_PORT_RANGE_START);
 
 		clusterClient = MINI_CLUSTER_RESOURCE.getClusterClient();
 	}
 
 	@AfterClass
 	public static void tearDown() {
-		client.shutdownAndWait();
+		pureClient.shutdownAndWait();
 	}
 
 	private static Configuration getConfig() {

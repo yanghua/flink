@@ -29,6 +29,32 @@ import static org.apache.flink.configuration.ConfigOptions.key;
 public class QueryableStateOptions {
 
 	// ------------------------------------------------------------------------
+	// Proxy Service Options
+	// ------------------------------------------------------------------------
+
+	public static final ConfigOption<String> PROXY_META_SERVER_HOST =
+		key("queryable-state.proxymetaserver.host")
+			.defaultValue("localhost")
+			.withDescription("The host of the queryable proxy meta server.");
+
+	public static final ConfigOption<String> PROXY_META_SERVER_PORT_RANGE =
+		key("queryable-state.proxymetaserver.ports")
+			.defaultValue("9070")
+			.withDescription("The port range of the queryable proxy meta server. The specified range can be a single " +
+				"port \"9123\", a range of ports: \"50100-50200\", " +
+				"or a list of ranges and ports: \"50100-50200,50300-50400,51234\".");
+
+	public static final ConfigOption<Integer> PROXY_META_SERVER_NETWORK_THREADS =
+		key("queryable-state.proxymetaserver.network-threads")
+			.defaultValue(0)
+			.withDescription("Number of network (Netty's event loop) Threads for queryable state proxy meta server");
+
+	public static final ConfigOption<Integer> PROXY_META_SERVER_QUERY_THREADS =
+		key("queryable-state.proxymetaserver.query-threads")
+			.defaultValue(0)
+			.withDescription("Number of query Threads for queryable proxy meta server. Uses the number of slots if set to 0.");
+
+	// ------------------------------------------------------------------------
 	// Server Options
 	// ------------------------------------------------------------------------
 
