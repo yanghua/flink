@@ -90,6 +90,7 @@ import org.slf4j.Logger;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -517,6 +518,26 @@ public abstract class SchedulerBase implements SchedulerNG {
 			} else {
 				throw new UnknownKvStateLocation(registrationName);
 			}
+		} else {
+			if (log.isDebugEnabled()) {
+				log.debug("Request of key-value state location for unknown job {} received.", jobId);
+			}
+			throw new FlinkJobNotFoundException(jobId);
+		}
+	}
+
+	@Override
+	public Map<String, KvStateLocation> requestKvStateLocations(JobID jobId) throws FlinkJobNotFoundException {
+		mainThreadExecutor.assertRunningInMainThread();
+
+		// sanity check for the correct JobID
+		if (jobGraph.getJobID().equals(jobId)) {
+			if (log.isDebugEnabled()) {
+				log.debug("Lookup key-value state for job {}.", jobGraph.getJobID());
+			}
+
+			final KvStateLocationRegistry registry = executionGraph.getKvStateLocationRegistry();
+			return registry.getKvStateLocations();
 		} else {
 			if (log.isDebugEnabled()) {
 				log.debug("Request of key-value state location for unknown job {} received.", jobId);

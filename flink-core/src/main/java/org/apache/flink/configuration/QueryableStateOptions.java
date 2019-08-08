@@ -29,6 +29,27 @@ import static org.apache.flink.configuration.ConfigOptions.key;
 public class QueryableStateOptions {
 
 	// ------------------------------------------------------------------------
+	// Location Service Options
+	// ------------------------------------------------------------------------
+
+	public static final ConfigOption<String> LOCATION_SERVICE_PORT_RANGE =
+		key("queryable-state.location-service.ports")
+			.defaultValue("9070")
+			.withDescription("The port range of the location service. The specified range can be a single " +
+				"port \"9123\", a range of ports: \"50100-50200\", " +
+				"or a list of ranges and ports: \"50100-50200,50300-50400,51234\".");
+
+	public static final ConfigOption<Integer> LOCATION_SERVICE_NETWORK_THREADS =
+		key("queryable-state.location-service.network-threads")
+			.defaultValue(0)
+			.withDescription("Number of network (Netty's event loop) Threads for queryable state location service.");
+
+	public static final ConfigOption<Integer> LOCATION_SERVICE_QUERY_THREADS =
+		key("queryable-state.location-service.query-threads")
+			.defaultValue(0)
+			.withDescription("Number of query Threads for location service. Uses the number of slots if set to 0.");
+
+	// ------------------------------------------------------------------------
 	// Server Options
 	// ------------------------------------------------------------------------
 

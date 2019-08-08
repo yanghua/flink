@@ -32,6 +32,7 @@ import org.apache.flink.runtime.jobmaster.JobResult;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.webmonitor.ClusterOverview;
 import org.apache.flink.runtime.messages.webmonitor.MultipleJobsDetails;
+import org.apache.flink.runtime.query.KvStateLocation;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.OperatorBackPressureStatsResponse;
 import org.apache.flink.runtime.rpc.RpcTimeout;
 
@@ -126,6 +127,11 @@ public final class TestingDispatcherGateway extends TestingRestfulGateway implem
 	@Override
 	public DispatcherId getFencingToken() {
 		return DEFAULT_FENCING_TOKEN;
+	}
+
+	@Override
+	public CompletableFuture<KvStateLocation> requestKvStateLocation(JobID jobId, String registrationName) {
+		return CompletableFuture.completedFuture(null);
 	}
 
 	public CompletableFuture<ArchivedExecutionGraph> requestJob(JobID jobId, @RpcTimeout Time timeout) {

@@ -40,6 +40,44 @@ public final class QueryableStateUtils {
 		"Probable reason: flink-queryable-state-runtime is not in the classpath. " +
 		"To enable Queryable State, please move the flink-queryable-state-runtime jar from the opt to the lib folder.";
 
+	public static QueryableStateLocationService createQueryableStateLocationService(
+		final InetAddress address,
+		final Iterator<Integer> ports,
+		final int eventLoopThreads,
+		final int queryThreads,
+		final KvStateRequestStats stats) {
+
+		Preconditions.checkNotNull(address, "address");
+		Preconditions.checkArgument(eventLoopThreads >= 1);
+		Preconditions.checkArgument(queryThreads >= 1);
+
+		try {
+			String classname = "org.apache.flink.queryablestate.locationservice.QueryableStateLocationServiceImpl";
+			Class<? extends QueryableStateLocationService> clazz = Class.forName(classname).asSubclass(QueryableStateLocationService.class);
+			Constructor<? extends QueryableStateLocationService> constructor = clazz.getConstructor(
+				InetAddress.class,
+				Iterator.class,
+				Integer.class,
+				Integer.class,
+				KvStateRequestStats.class);
+			return constructor.newInstance(address, ports, eventLoopThreads, queryThreads, stats);
+		} catch (ClassNotFoundException e) {
+			final String msg = "Could not load Queryable State Proxy Service. " + ERROR_MESSAGE_ON_LOAD_FAILURE;
+			if (LOG.isDebugEnabled()) {
+				LOG.debug(msg + " Cause: " + e.getMessage());
+			} else {
+				LOG.info(msg);
+			}
+			return null;
+		} catch (InvocationTargetException e) {
+			LOG.error("Queryable State Proxy Service could not be created: ", e.getTargetException());
+			return null;
+		} catch (Throwable e) {
+			LOG.error("Failed to instantiate the Queryable State Proxy Service.", e);
+			return null;
+		}
+	}
+
 	/**
 	 * Initializes the {@link KvStateClientProxy client proxy} responsible for
 	 * receiving requests from the external (to the cluster) client and forwarding them internally.

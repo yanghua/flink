@@ -50,6 +50,8 @@ public class HAQueryableStateRocksDBBackendITCase extends AbstractQueryableState
 	private static final int QS_PROXY_PORT_RANGE_START = 9074;
 	private static final int QS_SERVER_PORT_RANGE_START = 9079;
 
+	private static final int QS_LOCATION_SERVICE_PORT_RANGE_START = 9520;
+
 	@ClassRule
 	public static TemporaryFolder temporaryFolder = new TemporaryFolder();
 
@@ -79,6 +81,8 @@ public class HAQueryableStateRocksDBBackendITCase extends AbstractQueryableState
 
 		client = new QueryableStateClient("localhost", QS_PROXY_PORT_RANGE_START);
 
+		useLocationServiceClient = new QueryableStateClient("localhost", QS_LOCATION_SERVICE_PORT_RANGE_START, true);
+
 		clusterClient = miniClusterResource.getClusterClient();
 	}
 
@@ -87,6 +91,8 @@ public class HAQueryableStateRocksDBBackendITCase extends AbstractQueryableState
 		miniClusterResource.after();
 
 		client.shutdownAndWait();
+
+		useLocationServiceClient.shutdownAndWait();
 
 		zkServer.stop();
 		zkServer.close();
@@ -103,12 +109,17 @@ public class HAQueryableStateRocksDBBackendITCase extends AbstractQueryableState
 		config.setInteger(QueryableStateOptions.CLIENT_NETWORK_THREADS, 2);
 		config.setInteger(QueryableStateOptions.PROXY_NETWORK_THREADS, 2);
 		config.setInteger(QueryableStateOptions.SERVER_NETWORK_THREADS, 2);
+		config.setInteger(QueryableStateOptions.LOCATION_SERVICE_QUERY_THREADS, 1);
+		config.setInteger(QueryableStateOptions.LOCATION_SERVICE_NETWORK_THREADS, 1);
 		config.setString(
 			QueryableStateOptions.PROXY_PORT_RANGE,
 			QS_PROXY_PORT_RANGE_START + "-" + (QS_PROXY_PORT_RANGE_START + NUM_TMS));
 		config.setString(
 			QueryableStateOptions.SERVER_PORT_RANGE,
 			QS_SERVER_PORT_RANGE_START + "-" + (QS_SERVER_PORT_RANGE_START + NUM_TMS));
+		config.setString(
+			QueryableStateOptions.LOCATION_SERVICE_PORT_RANGE,
+			QS_LOCATION_SERVICE_PORT_RANGE_START + "-" + (QS_LOCATION_SERVICE_PORT_RANGE_START + NUM_TMS));
 		config.setBoolean(WebOptions.SUBMIT_ENABLE, false);
 
 		config.setString(HighAvailabilityOptions.HA_STORAGE_PATH, temporaryFolder.newFolder().toString());

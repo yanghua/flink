@@ -122,6 +122,11 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 	 */
 	protected static QueryableStateClient client;
 
+	/**
+	 * Client (uses location service) shared between all the test.
+	 */
+	protected static QueryableStateClient useLocationServiceClient;
+
 	protected static ClusterClient<?> clusterClient;
 
 	protected static int maxParallelism;
@@ -362,6 +367,16 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 	@Test
 	@Ignore
 	public void testWrongJobIdAndWrongQueryableStateName() throws Exception {
+		testWrongJobIdAndWrongQueryableStateName(false);
+	}
+
+	@Test
+	@Ignore
+	public void testWrongJobIdAndWrongQueryableStateNameBasedOnLocationService() throws Exception {
+		testWrongJobIdAndWrongQueryableStateName(true);
+	}
+
+	private void testWrongJobIdAndWrongQueryableStateName(boolean isProxyClient) throws Exception {
 		final Deadline deadline = Deadline.now().plus(TEST_TIMEOUT);
 		final long numElements = 1024L;
 
@@ -401,30 +416,58 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 
 			final JobID wrongJobId = new JobID();
 
-			CompletableFuture<ValueState<Tuple2<Integer, Long>>> unknownJobFuture = client.getKvState(
+			CompletableFuture<ValueState<Tuple2<Integer, Long>>> unknownQSName;
+			if (isProxyClient) {
+				CompletableFuture<ValueState<Tuple2<Integer, Long>>> unknownJobFuture = useLocationServiceClient.getKvState(
 					wrongJobId, 						// this is the wrong job id
 					"hakuna",
 					0,
 					BasicTypeInfo.INT_TYPE_INFO,
 					valueState);
 
-			try {
-				unknownJobFuture.get(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS);
-				fail(); // by now the request must have failed.
-			} catch (ExecutionException e) {
-				Assert.assertTrue("GOT: " + e.getCause().getMessage(), e.getCause() instanceof RuntimeException);
-				Assert.assertTrue("GOT: " + e.getCause().getMessage(), e.getCause().getMessage().contains(
+				try {
+					unknownJobFuture.get(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS);
+					fail(); // by now the request must have failed.
+				} catch (ExecutionException e) {
+					Assert.assertTrue("GOT: " + e.getCause().getMessage(), e.getCause() instanceof RuntimeException);
+					Assert.assertTrue("GOT: " + e.getCause().getMessage(), e.getCause().getMessage().contains(
 						"FlinkJobNotFoundException: Could not find Flink job (" + wrongJobId + ")"));
-			} catch (Exception f) {
-				fail("Unexpected type of exception: " + f.getMessage());
-			}
+				} catch (Exception f) {
+					fail("Unexpected type of exception: " + f.getMessage());
+				}
 
-			CompletableFuture<ValueState<Tuple2<Integer, Long>>> unknownQSName = client.getKvState(
+				unknownQSName = useLocationServiceClient.getKvState(
 					closableJobGraph.getJobId(),
 					"wrong-hakuna", // this is the wrong name.
 					0,
 					BasicTypeInfo.INT_TYPE_INFO,
 					valueState);
+			} else {
+				CompletableFuture<ValueState<Tuple2<Integer, Long>>> unknownJobFuture = client.getKvState(
+					wrongJobId, 						// this is the wrong job id
+					"hakuna",
+					0,
+					BasicTypeInfo.INT_TYPE_INFO,
+					valueState);
+
+				try {
+					unknownJobFuture.get(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS);
+					fail(); // by now the request must have failed.
+				} catch (ExecutionException e) {
+					Assert.assertTrue("GOT: " + e.getCause().getMessage(), e.getCause() instanceof RuntimeException);
+					Assert.assertTrue("GOT: " + e.getCause().getMessage(), e.getCause().getMessage().contains(
+						"FlinkJobNotFoundException: Could not find Flink job (" + wrongJobId + ")"));
+				} catch (Exception f) {
+					fail("Unexpected type of exception: " + f.getMessage());
+				}
+
+				unknownQSName = client.getKvState(
+					closableJobGraph.getJobId(),
+					"wrong-hakuna", // this is the wrong name.
+					0,
+					BasicTypeInfo.INT_TYPE_INFO,
+					valueState);
+			}
 
 			try {
 				unknownQSName.get(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS);
@@ -432,7 +475,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 			} catch (ExecutionException e) {
 				Assert.assertTrue("GOT: " + e.getCause().getMessage(), e.getCause() instanceof RuntimeException);
 				Assert.assertTrue("GOT: " + e.getCause().getMessage(), e.getCause().getMessage().contains(
-						"UnknownKvStateLocation: No KvStateLocation found for KvState instance with name 'wrong-hakuna'."));
+					"UnknownKvStateLocation: No KvStateLocation found for KvState instance with name 'wrong-hakuna'."));
 			} catch (Exception f) {
 				fail("Unexpected type of exception: " + f.getMessage());
 			}
@@ -445,6 +488,15 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 	 */
 	@Test
 	public void testQueryNonStartedJobState() throws Exception {
+		testQueryNonStartedJobState(false);
+	}
+
+	@Test
+	public void testQueryNonStartedJobStateBasedOnLocationService() throws Exception {
+		testQueryNonStartedJobState(true);
+	}
+
+	private void testQueryNonStartedJobState(boolean isProxyClient) throws Exception {
 		final Deadline deadline = Deadline.now().plus(TEST_TIMEOUT);
 		final long numElements = 1024L;
 
@@ -462,15 +514,15 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 			"any", source.getType(), 	null);
 
 		QueryableStateStream<Integer, Tuple2<Integer, Long>> queryableState =
-				source.keyBy(new KeySelector<Tuple2<Integer, Long>, Integer>() {
+			source.keyBy(new KeySelector<Tuple2<Integer, Long>, Integer>() {
 
-					private static final long serialVersionUID = 7480503339992214681L;
+				private static final long serialVersionUID = 7480503339992214681L;
 
-					@Override
-					public Integer getKey(Tuple2<Integer, Long> value) {
-						return value.f0;
-					}
-				}).asQueryableState("hakuna", valueState);
+				@Override
+				public Integer getKey(Tuple2<Integer, Long> value) {
+					return value.f0;
+				}
+			}).asQueryableState("hakuna", valueState);
 
 		try (AutoCancellableJob autoCancellableJob = new AutoCancellableJob(deadline, clusterClient, env)) {
 
@@ -480,17 +532,31 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 			long expected = numElements;
 
 			// query once
-			client.getKvState(
+			if (isProxyClient) {
+				useLocationServiceClient.getKvState(
 					autoCancellableJob.getJobId(),
 					queryableState.getQueryableStateName(),
 					0,
 					BasicTypeInfo.INT_TYPE_INFO,
 					valueState);
 
-			clusterClient.setDetached(true);
-			clusterClient.submitJob(jobGraph, AbstractQueryableStateTestBase.class.getClassLoader());
+				clusterClient.setDetached(true);
+				clusterClient.submitJob(jobGraph, AbstractQueryableStateTestBase.class.getClassLoader());
 
-			executeValueQuery(deadline, client, jobId, "hakuna", valueState, expected);
+				executeValueQuery(deadline, useLocationServiceClient, jobId, "hakuna", valueState, expected);
+			} else {
+				client.getKvState(
+					autoCancellableJob.getJobId(),
+					queryableState.getQueryableStateName(),
+					0,
+					BasicTypeInfo.INT_TYPE_INFO,
+					valueState);
+
+				clusterClient.setDetached(true);
+				clusterClient.submitJob(jobGraph, AbstractQueryableStateTestBase.class.getClassLoader());
+
+				executeValueQuery(deadline, client, jobId, "hakuna", valueState, expected);
+			}
 		}
 	}
 
@@ -504,6 +570,23 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 	 */
 	@Test(expected = UnknownKeyOrNamespaceException.class)
 	public void testValueStateDefault() throws Throwable {
+		testValueStateDefault(false);
+	}
+
+	/**
+	 * Tests simple value state queryable state instance with a default value
+	 * set. Each source emits (subtaskIndex, 0)..(subtaskIndex, numElements)
+	 * tuples, the key is mapped to 1 but key 0 is queried which should throw
+	 * a {@link UnknownKeyOrNamespaceException} exception.
+	 *
+	 * @throws UnknownKeyOrNamespaceException thrown due querying a non-existent key
+	 */
+	@Test(expected = UnknownKeyOrNamespaceException.class)
+	public void testValueStateDefaultBasedOnLocationService() throws Throwable {
+		testValueStateDefault(true);
+	}
+
+	private void testValueStateDefault(boolean isProxyClient) throws Throwable {
 		final Deadline deadline = Deadline.now().plus(TEST_TIMEOUT);
 		final long numElements = 1024L;
 
@@ -518,18 +601,18 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 		DataStream<Tuple2<Integer, Long>> source = env.addSource(new TestAscendingValueSource(numElements));
 
 		ValueStateDescriptor<Tuple2<Integer, Long>> valueState = new ValueStateDescriptor<>(
-				"any", source.getType(), 	Tuple2.of(0, 1337L));
+			"any", source.getType(), 	Tuple2.of(0, 1337L));
 
 		// only expose key "1"
 		QueryableStateStream<Integer, Tuple2<Integer, Long>> queryableState = source.keyBy(
-				new KeySelector<Tuple2<Integer, Long>, Integer>() {
-					private static final long serialVersionUID = 4509274556892655887L;
+			new KeySelector<Tuple2<Integer, Long>, Integer>() {
+				private static final long serialVersionUID = 4509274556892655887L;
 
-					@Override
-					public Integer getKey(Tuple2<Integer, Long> value) {
-						return 1;
-					}
-				}).asQueryableState("hakuna", valueState);
+				@Override
+				public Integer getKey(Tuple2<Integer, Long> value) {
+					return 1;
+				}
+			}).asQueryableState("hakuna", valueState);
 
 		try (AutoCancellableJob autoCancellableJob = new AutoCancellableJob(deadline, clusterClient, env)) {
 
@@ -539,9 +622,31 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 			clusterClient.setDetached(true);
 			clusterClient.submitJob(jobGraph, AbstractQueryableStateTestBase.class.getClassLoader());
 
-			// Now query
-			int key = 0;
-			CompletableFuture<ValueState<Tuple2<Integer, Long>>> future = getKvState(
+			if (isProxyClient) {
+				// Now query
+				int key = 0;
+				CompletableFuture<ValueState<Tuple2<Integer, Long>>> future = getKvState(
+					deadline,
+					useLocationServiceClient,
+					jobId,
+					queryableState.getQueryableStateName(),
+					key,
+					BasicTypeInfo.INT_TYPE_INFO,
+					valueState,
+					true,
+					executor);
+
+				try {
+					future.get(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS);
+				} catch (ExecutionException | CompletionException e) {
+					// get() on a completedExceptionally future wraps the
+					// exception in an ExecutionException.
+					throw e.getCause();
+				}
+			} else {
+				// Now query
+				int key = 0;
+				CompletableFuture<ValueState<Tuple2<Integer, Long>>> future = getKvState(
 					deadline,
 					client,
 					jobId,
@@ -552,12 +657,13 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 					true,
 					executor);
 
-			try {
-				future.get(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS);
-			} catch (ExecutionException | CompletionException e) {
-				// get() on a completedExceptionally future wraps the
-				// exception in an ExecutionException.
-				throw e.getCause();
+				try {
+					future.get(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS);
+				} catch (ExecutionException | CompletionException e) {
+					// get() on a completedExceptionally future wraps the
+					// exception in an ExecutionException.
+					throw e.getCause();
+				}
 			}
 		}
 	}
@@ -572,6 +678,23 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 	 */
 	@Test
 	public void testValueStateShortcut() throws Exception {
+		testValueStateShortcut(false);
+	}
+
+	/**
+	 * Tests simple value state queryable state instance. Each source emits
+	 * (subtaskIndex, 0)..(subtaskIndex, numElements) tuples, which are then
+	 * queried. The tests succeeds after each subtask index is queried with
+	 * value numElements (the latest element updated the state).
+	 *
+	 * <p>This is the same as the simple value state test, but uses the API shortcut.
+	 */
+	@Test
+	public void testValueStateShortcutBasedOnLocationService() throws Exception {
+		testValueStateShortcut(true);
+	}
+
+	private void testValueStateShortcut(boolean isProxyClient) throws Exception {
 		final Deadline deadline = Deadline.now().plus(TEST_TIMEOUT);
 		final long numElements = 1024L;
 
@@ -587,18 +710,18 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 
 		// Value state shortcut
 		final QueryableStateStream<Integer, Tuple2<Integer, Long>> queryableState =
-				source.keyBy(new KeySelector<Tuple2<Integer, Long>, Integer>() {
-					private static final long serialVersionUID = 9168901838808830068L;
+			source.keyBy(new KeySelector<Tuple2<Integer, Long>, Integer>() {
+				private static final long serialVersionUID = 9168901838808830068L;
 
-					@Override
-					public Integer getKey(Tuple2<Integer, Long> value) {
-						return value.f0;
-					}
-				}).asQueryableState("matata");
+				@Override
+				public Integer getKey(Tuple2<Integer, Long> value) {
+					return value.f0;
+				}
+			}).asQueryableState("matata");
 
 		@SuppressWarnings("unchecked")
 		final ValueStateDescriptor<Tuple2<Integer, Long>> stateDesc =
-				(ValueStateDescriptor<Tuple2<Integer, Long>>) queryableState.getStateDescriptor();
+			(ValueStateDescriptor<Tuple2<Integer, Long>>) queryableState.getStateDescriptor();
 
 		try (AutoCancellableJob autoCancellableJob = new AutoCancellableJob(deadline, clusterClient, env)) {
 
@@ -608,7 +731,11 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 			clusterClient.setDetached(true);
 			clusterClient.submitJob(jobGraph, AbstractQueryableStateTestBase.class.getClassLoader());
 
-			executeValueQuery(deadline, client, jobId, "matata", stateDesc, numElements);
+			if (isProxyClient) {
+				executeValueQuery(deadline, useLocationServiceClient, jobId, "matata", stateDesc, numElements);
+			} else {
+				executeValueQuery(deadline, client, jobId, "matata", stateDesc, numElements);
+			}
 		}
 	}
 
@@ -621,6 +748,15 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 	 */
 	@Test
 	public void testFoldingState() throws Exception {
+		testFoldingState(false);
+	}
+
+	@Test
+	public void testFoldingStateBasedOnLocationService() throws Exception {
+		testFoldingState(true);
+	}
+
+	private void testFoldingState(boolean isProxyClient) throws Exception {
 		final Deadline deadline = Deadline.now().plus(TEST_TIMEOUT);
 		final int numElements = 1024;
 
@@ -635,7 +771,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 		DataStream<Tuple2<Integer, Long>> source = env.addSource(new TestAscendingValueSource(numElements));
 
 		FoldingStateDescriptor<Tuple2<Integer, Long>, String> foldingState = new FoldingStateDescriptor<>(
-				"any", "0", new SumFold(), StringSerializer.INSTANCE);
+			"any", "0", new SumFold(), StringSerializer.INSTANCE);
 
 		source.keyBy(new KeySelector<Tuple2<Integer, Long>, Integer>() {
 			private static final long serialVersionUID = -842809958106747539L;
@@ -659,7 +795,20 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 			for (int key = 0; key < maxParallelism; key++) {
 				boolean success = false;
 				while (deadline.hasTimeLeft() && !success) {
-					CompletableFuture<FoldingState<Tuple2<Integer, Long>, String>> future = getKvState(
+					CompletableFuture<FoldingState<Tuple2<Integer, Long>, String>> future;
+					if (isProxyClient) {
+						future = getKvState(
+							deadline,
+							useLocationServiceClient,
+							jobId,
+							"pumba",
+							key,
+							BasicTypeInfo.INT_TYPE_INFO,
+							foldingState,
+							false,
+							executor);
+					} else {
+						future = getKvState(
 							deadline,
 							client,
 							jobId,
@@ -669,6 +818,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 							foldingState,
 							false,
 							executor);
+					}
 
 					String value = future.get(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS).get();
 
@@ -693,7 +843,16 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 	 * after each subtask index is queried with result n*(n+1)/2.
 	 */
 	@Test
+	public void testReducingStateBasedOnLocationService() throws Exception {
+		testReducingState(true);
+	}
+
+	@Test
 	public void testReducingState() throws Exception {
+		testReducingState(false);
+	}
+
+	private void testReducingState(boolean isProxyClient) throws Exception {
 		final Deadline deadline = Deadline.now().plus(TEST_TIMEOUT);
 		final long numElements = 1024L;
 
@@ -708,7 +867,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 		DataStream<Tuple2<Integer, Long>> source = env.addSource(new TestAscendingValueSource(numElements));
 
 		ReducingStateDescriptor<Tuple2<Integer, Long>> reducingState = new ReducingStateDescriptor<>(
-				"any", new SumReduce(), source.getType());
+			"any", new SumReduce(), source.getType());
 
 		source.keyBy(new KeySelector<Tuple2<Integer, Long>, Integer>() {
 			private static final long serialVersionUID = 8470749712274833552L;
@@ -732,7 +891,20 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 			for (int key = 0; key < maxParallelism; key++) {
 				boolean success = false;
 				while (deadline.hasTimeLeft() && !success) {
-					CompletableFuture<ReducingState<Tuple2<Integer, Long>>> future = getKvState(
+					CompletableFuture<ReducingState<Tuple2<Integer, Long>>> future;
+					if (isProxyClient) {
+						future = getKvState(
+							deadline,
+							useLocationServiceClient,
+							jobId,
+							"jungle",
+							key,
+							BasicTypeInfo.INT_TYPE_INFO,
+							reducingState,
+							false,
+							executor);
+					} else {
+						future = getKvState(
 							deadline,
 							client,
 							jobId,
@@ -742,6 +914,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 							reducingState,
 							false,
 							executor);
+					}
 
 					Tuple2<Integer, Long> value = future.get(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS).get();
 
@@ -767,6 +940,15 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 	 */
 	@Test
 	public void testMapState() throws Exception {
+		testMapState(false);
+	}
+
+	@Test
+	public void testMapStateBasedOnLocationService() throws Exception {
+		testMapState(true);
+	}
+
+	private void testMapState(boolean isProxyClient) throws Exception {
 		final Deadline deadline = Deadline.now().plus(TEST_TIMEOUT);
 		final long numElements = 1024L;
 
@@ -781,7 +963,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 		DataStream<Tuple2<Integer, Long>> source = env.addSource(new TestAscendingValueSource(numElements));
 
 		final MapStateDescriptor<Integer, Tuple2<Integer, Long>> mapStateDescriptor = new MapStateDescriptor<>(
-				"timon", BasicTypeInfo.INT_TYPE_INFO, source.getType());
+			"timon", BasicTypeInfo.INT_TYPE_INFO, source.getType());
 		mapStateDescriptor.setQueryable("timon-queryable");
 
 		source.keyBy(new KeySelector<Tuple2<Integer, Long>, Integer>() {
@@ -825,7 +1007,20 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 			for (int key = 0; key < maxParallelism; key++) {
 				boolean success = false;
 				while (deadline.hasTimeLeft() && !success) {
-					CompletableFuture<MapState<Integer, Tuple2<Integer, Long>>> future = getKvState(
+					CompletableFuture<MapState<Integer, Tuple2<Integer, Long>>> future;
+					if (isProxyClient) {
+						future = getKvState(
+							deadline,
+							useLocationServiceClient,
+							jobId,
+							"timon-queryable",
+							key,
+							BasicTypeInfo.INT_TYPE_INFO,
+							mapStateDescriptor,
+							false,
+							executor);
+					} else {
+						future = getKvState(
 							deadline,
 							client,
 							jobId,
@@ -835,6 +1030,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 							mapStateDescriptor,
 							false,
 							executor);
+					}
 
 					Tuple2<Integer, Long> value =
 						future.get(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS).get(key);
@@ -862,6 +1058,15 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 	 */
 	@Test
 	public void testListState() throws Exception {
+		testListState(false);
+	}
+
+	@Test
+	public void testListStateBasedOnLocationService() throws Exception {
+		testListState(true);
+	}
+
+	private void testListState(boolean isProxyClient) throws Exception {
 		final Deadline deadline = Deadline.now().plus(TEST_TIMEOUT);
 		final long numElements = 1024L;
 
@@ -876,7 +1081,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 		DataStream<Tuple2<Integer, Long>> source = env.addSource(new TestAscendingValueSource(numElements));
 
 		final ListStateDescriptor<Long> listStateDescriptor = new ListStateDescriptor<Long>(
-				"list", BasicTypeInfo.LONG_TYPE_INFO);
+			"list", BasicTypeInfo.LONG_TYPE_INFO);
 		listStateDescriptor.setQueryable("list-queryable");
 
 		source.keyBy(new KeySelector<Tuple2<Integer, Long>, Integer>() {
@@ -916,7 +1121,20 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 			for (int key = 0; key < maxParallelism; key++) {
 				boolean success = false;
 				while (deadline.hasTimeLeft() && !success) {
-					final CompletableFuture<ListState<Long>> future = getKvState(
+					final CompletableFuture<ListState<Long>> future;
+					if (isProxyClient) {
+						future = getKvState(
+							deadline,
+							useLocationServiceClient,
+							jobId,
+							"list-queryable",
+							key,
+							BasicTypeInfo.INT_TYPE_INFO,
+							listStateDescriptor,
+							false,
+							executor);
+					} else {
+						future = getKvState(
 							deadline,
 							client,
 							jobId,
@@ -926,6 +1144,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 							listStateDescriptor,
 							false,
 							executor);
+					}
 
 					Iterable<Long> value = future.get(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS).get();
 
@@ -959,6 +1178,15 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 
 	@Test
 	public void testAggregatingState() throws Exception {
+		testAggregatingState(false);
+	}
+
+	@Test
+	public void testAggregatingStateBasedOnLocationService() throws Exception {
+		testAggregatingState(true);
+	}
+
+	private void testAggregatingState(boolean isProxyClient) throws Exception {
 		final Deadline deadline = Deadline.now().plus(TEST_TIMEOUT);
 		final long numElements = 1024L;
 
@@ -973,7 +1201,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 		DataStream<Tuple2<Integer, Long>> source = env.addSource(new TestAscendingValueSource(numElements));
 
 		final AggregatingStateDescriptor<Tuple2<Integer, Long>, String, String> aggrStateDescriptor =
-				new AggregatingStateDescriptor<>("aggregates", new SumAggr(), String.class);
+			new AggregatingStateDescriptor<>("aggregates", new SumAggr(), String.class);
 		aggrStateDescriptor.setQueryable("aggr-queryable");
 
 		source.keyBy(new KeySelector<Tuple2<Integer, Long>, Integer>() {
@@ -984,9 +1212,9 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 				return value.f0;
 			}
 		}).transform(
-				"TestAggregatingOperator",
-				BasicTypeInfo.STRING_TYPE_INFO,
-				new AggregatingTestOperator(aggrStateDescriptor)
+			"TestAggregatingOperator",
+			BasicTypeInfo.STRING_TYPE_INFO,
+			new AggregatingTestOperator(aggrStateDescriptor)
 		);
 
 		try (AutoCancellableJob autoCancellableJob = new AutoCancellableJob(deadline, clusterClient, env)) {
@@ -1000,7 +1228,20 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 			for (int key = 0; key < maxParallelism; key++) {
 				boolean success = false;
 				while (deadline.hasTimeLeft() && !success) {
-					CompletableFuture<AggregatingState<Tuple2<Integer, Long>, String>> future = getKvState(
+					CompletableFuture<AggregatingState<Tuple2<Integer, Long>, String>> future;
+					if (isProxyClient) {
+						future = getKvState(
+							deadline,
+							useLocationServiceClient,
+							jobId,
+							"aggr-queryable",
+							key,
+							BasicTypeInfo.INT_TYPE_INFO,
+							aggrStateDescriptor,
+							false,
+							executor);
+					} else {
+						future = getKvState(
 							deadline,
 							client,
 							jobId,
@@ -1010,6 +1251,7 @@ public abstract class AbstractQueryableStateTestBase extends TestLogger {
 							aggrStateDescriptor,
 							false,
 							executor);
+					}
 
 					String value = future.get(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS).get();
 

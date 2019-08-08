@@ -34,6 +34,7 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.queryablestate.FutureUtils;
+import org.apache.flink.queryablestate.KvStateID;
 import org.apache.flink.queryablestate.client.state.ImmutableAggregatingState;
 import org.apache.flink.queryablestate.client.state.ImmutableFoldingState;
 import org.apache.flink.queryablestate.client.state.ImmutableListState;
@@ -41,6 +42,10 @@ import org.apache.flink.queryablestate.client.state.ImmutableMapState;
 import org.apache.flink.queryablestate.client.state.ImmutableReducingState;
 import org.apache.flink.queryablestate.client.state.ImmutableValueState;
 import org.apache.flink.queryablestate.client.state.serialization.KvStateSerializer;
+import org.apache.flink.queryablestate.exceptions.UnknownLocationException;
+import org.apache.flink.queryablestate.messages.KvStateInternalRequest;
+import org.apache.flink.queryablestate.messages.KvStateLocationRequest;
+import org.apache.flink.queryablestate.messages.KvStateLocationResponse;
 import org.apache.flink.queryablestate.messages.KvStateRequest;
 import org.apache.flink.queryablestate.messages.KvStateResponse;
 import org.apache.flink.queryablestate.network.Client;
@@ -97,19 +102,33 @@ public class QueryableStateClient {
 	}
 
 	/** The client that forwards the requests to the proxy. */
-	private final Client<KvStateRequest, KvStateResponse> client;
+	private Client<KvStateRequest, KvStateResponse> client;
+
+	private Client<KvStateLocationRequest, KvStateLocationResponse> locationServiceClient;
+
+	/**
+	 * Network client to query kv state location from dispatcher.
+	 */
+	private Client<KvStateInternalRequest, KvStateResponse> kvStateClient;
 
 	/** The address of the proxy this client is connected to. */
-	private final InetSocketAddress remoteAddress;
+	private InetSocketAddress remoteAddress;
+
+	/** The address of the location service. */
+	private InetSocketAddress locationServiceAddress;
 
 	/** The execution configuration used to instantiate the different (de-)serializers. */
 	private ExecutionConfig executionConfig;
+
+	/** The flag indicate whether it is location service mode. */
+	private boolean locationServiceMode;
 
 	/**
 	 * Create the Queryable State Client.
 	 * @param remoteHostname the hostname of the {@code Client Proxy} to connect to.
 	 * @param remotePort the port of the proxy to connect to.
 	 */
+	@Deprecated
 	public QueryableStateClient(final String remoteHostname, final int remotePort) throws UnknownHostException {
 		this(InetAddress.getByName(Preconditions.checkNotNull(remoteHostname)), remotePort);
 	}
@@ -119,22 +138,50 @@ public class QueryableStateClient {
 	 * @param remoteAddress the {@link InetAddress address} of the {@code Client Proxy} to connect to.
 	 * @param remotePort the port of the proxy to connect to.
 	 */
+	@Deprecated
 	public QueryableStateClient(final InetAddress remoteAddress, final int remotePort) {
-		Preconditions.checkArgument(remotePort >= 0 && remotePort <= 65536,
-				"Remote Port " + remotePort + " is out of valid port range (0-65536).");
+		this(remoteAddress, remotePort, false);
+	}
 
-		this.remoteAddress = new InetSocketAddress(remoteAddress, remotePort);
+	public QueryableStateClient(final String remoteHostname, final int remotePort, final boolean locationServiceMode) throws UnknownHostException {
+		this(InetAddress.getByName(Preconditions.checkNotNull(remoteHostname)), remotePort, locationServiceMode);
+	}
 
-		final MessageSerializer<KvStateRequest, KvStateResponse> messageSerializer =
+	public QueryableStateClient(final InetAddress address, final int port, final boolean locationServiceMode) {
+		Preconditions.checkArgument(port >= 0 && port <= 65536,
+			"Remote Port " + port + " is out of valid port range (0-65536).");
+
+		if (locationServiceMode) {
+			this.locationServiceAddress = new InetSocketAddress(address, port);
+
+			final MessageSerializer<KvStateLocationRequest, KvStateLocationResponse> messageSerializer =
 				new MessageSerializer<>(
-						new KvStateRequest.KvStateRequestDeserializer(),
-						new KvStateResponse.KvStateResponseDeserializer());
+					new KvStateLocationRequest.KvStateLocationRequestDeserializer(),
+					new KvStateLocationResponse.KvStateLocationResponseDeserializer());
 
-		this.client = new Client<>(
+			this.locationServiceClient = new Client<>(
+				"Location Service Client",
+				1,
+				messageSerializer,
+				new DisabledKvStateRequestStats());
+
+			this.kvStateClient = createInternalClient();
+		} else {
+			this.remoteAddress = new InetSocketAddress(address, port);
+
+			final MessageSerializer<KvStateRequest, KvStateResponse> messageSerializer =
+				new MessageSerializer<>(
+					new KvStateRequest.KvStateRequestDeserializer(),
+					new KvStateResponse.KvStateResponseDeserializer());
+
+			this.client = new Client<>(
 				"Queryable State Client",
 				1,
 				messageSerializer,
 				new DisabledKvStateRequestStats());
+		}
+
+		this.locationServiceMode = locationServiceMode;
 	}
 
 	/**
@@ -307,13 +354,79 @@ public class QueryableStateClient {
 			final String queryableStateName,
 			final int keyHashCode,
 			final byte[] serializedKeyAndNamespace) {
+		LOG.debug("Using {} query mode.", locationServiceMode ? "location service based two-phase " : "old");
+		if (locationServiceMode) {
+			LOG.debug("Sending state location request to {}.", locationServiceAddress);
+			KvStateLocationRequest locationRequest = new KvStateLocationRequest(jobId, queryableStateName, keyHashCode);
+			CompletableFuture<KvStateLocationResponse> responseCompletableFuture = locationServiceClient.sendRequest(locationServiceAddress, locationRequest);
+			return responseCompletableFuture.thenCompose((response) -> {
+				if (response != null) {
+					remoteAddress = response.getKvStateLocation();
+					KvStateID stateID = response.getKvStateId();
+					if (remoteAddress != null && stateID != null) {
+						return getKvStateFromServer(stateID, serializedKeyAndNamespace, remoteAddress);
+					} else {
+						return FutureUtils.getFailedFuture(
+							new UnknownLocationException("Can not get location info from " + locationServiceAddress
+								+ " with job id: " + jobId + ", query name : " + queryableStateName)
+						);
+					}
+				} else {
+					return FutureUtils.getFailedFuture(
+						new UnknownLocationException("Can not get location info from " + locationServiceAddress
+							+ " with job id: " + jobId + ", query name : " + queryableStateName)
+					);
+				}
+			});
+		} else {
+			return getKvState(jobId, queryableStateName, keyHashCode, serializedKeyAndNamespace, remoteAddress);
+		}
+	}
+
+	private CompletableFuture<KvStateResponse> getKvState(
+			final JobID jobId,
+			final String queryableStateName,
+			final int keyHashCode,
+			final byte[] serializedKeyAndNamespace,
+			InetSocketAddress remoteAddress) {
+
 		LOG.debug("Sending State Request to {}.", remoteAddress);
 		try {
 			KvStateRequest request = new KvStateRequest(jobId, queryableStateName, keyHashCode, serializedKeyAndNamespace);
-			return client.sendRequest(remoteAddress, request);
+			return client.sendRequest(remoteAddress, request).thenCompose(kvStateResponse -> {
+				if (kvStateResponse != null) {
+					return CompletableFuture.completedFuture(kvStateResponse);
+				} else {
+					return CompletableFuture.completedFuture(null);
+				}
+			});
 		} catch (Exception e) {
 			LOG.error("Unable to send KVStateRequest: ", e);
 			return FutureUtils.getFailedFuture(e);
 		}
 	}
+
+	private CompletableFuture<KvStateResponse> getKvStateFromServer(
+			final KvStateID kvStateId,
+			final byte[] serializedKeyAndNamespace,
+			InetSocketAddress remoteAddress) {
+
+		final KvStateInternalRequest internalRequest = new KvStateInternalRequest(
+			kvStateId, serializedKeyAndNamespace);
+		return kvStateClient.sendRequest(remoteAddress, internalRequest);
+	}
+
+	private static Client<KvStateInternalRequest, KvStateResponse> createInternalClient() {
+		final MessageSerializer<KvStateInternalRequest, KvStateResponse> messageSerializer =
+			new MessageSerializer<>(
+				new KvStateInternalRequest.KvStateInternalRequestDeserializer(),
+				new KvStateResponse.KvStateResponseDeserializer());
+
+		return new Client<>(
+			"Queryable State Proxy Client",
+			1,
+			messageSerializer,
+			new DisabledKvStateRequestStats());
+	}
+
 }

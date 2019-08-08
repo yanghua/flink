@@ -49,6 +49,8 @@ public class NonHAQueryableStateFsBackendITCase extends AbstractQueryableStateTe
 	private static final int QS_PROXY_PORT_RANGE_START = 9084;
 	private static final int QS_SERVER_PORT_RANGE_START = 9089;
 
+	private static final int QS_LOCATION_SERVICE_PORT_RANGE_START = 9520;
+
 	@Rule
 	public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
@@ -69,12 +71,16 @@ public class NonHAQueryableStateFsBackendITCase extends AbstractQueryableStateTe
 	public static void setup() throws Exception {
 		client = new QueryableStateClient("localhost", QS_PROXY_PORT_RANGE_START);
 
+		useLocationServiceClient = new QueryableStateClient("localhost", QS_LOCATION_SERVICE_PORT_RANGE_START, true);
+
 		clusterClient = MINI_CLUSTER_RESOURCE.getClusterClient();
 	}
 
 	@AfterClass
 	public static void tearDown() {
 		client.shutdownAndWait();
+
+		useLocationServiceClient.shutdownAndWait();
 	}
 
 	private static Configuration getConfig() {
@@ -86,9 +92,14 @@ public class NonHAQueryableStateFsBackendITCase extends AbstractQueryableStateTe
 		config.setInteger(QueryableStateOptions.CLIENT_NETWORK_THREADS, 1);
 		config.setInteger(QueryableStateOptions.PROXY_NETWORK_THREADS, 1);
 		config.setInteger(QueryableStateOptions.SERVER_NETWORK_THREADS, 1);
+		config.setInteger(QueryableStateOptions.LOCATION_SERVICE_QUERY_THREADS, 1);
+		config.setInteger(QueryableStateOptions.LOCATION_SERVICE_NETWORK_THREADS, 1);
 		config.setString(
 			QueryableStateOptions.PROXY_PORT_RANGE,
 			QS_PROXY_PORT_RANGE_START + "-" + (QS_PROXY_PORT_RANGE_START + NUM_PORT_COUNT));
+		config.setString(
+			QueryableStateOptions.LOCATION_SERVICE_PORT_RANGE,
+			QS_LOCATION_SERVICE_PORT_RANGE_START + "-" + (QS_LOCATION_SERVICE_PORT_RANGE_START + NUM_PORT_COUNT));
 		config.setString(
 			QueryableStateOptions.SERVER_PORT_RANGE,
 			QS_SERVER_PORT_RANGE_START + "-" + (QS_SERVER_PORT_RANGE_START + NUM_PORT_COUNT));

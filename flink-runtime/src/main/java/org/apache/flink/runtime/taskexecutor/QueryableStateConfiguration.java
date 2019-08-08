@@ -35,6 +35,8 @@ public class QueryableStateConfiguration {
 
 	private final Iterator<Integer> qserverPortRange;
 
+	private final Iterator<Integer> locationServicePortRange;
+
 	private final int numProxyThreads;
 
 	private final int numPQueryThreads;
@@ -43,27 +45,41 @@ public class QueryableStateConfiguration {
 
 	private final int numSQueryThreads;
 
+	private final int numLocationServiceThreads;
+
+	private final int numLocationServiceQueryThreads;
+
 	public QueryableStateConfiguration(
 			Iterator<Integer> proxyPortRange,
 			Iterator<Integer> qserverPortRange,
+			Iterator<Integer> locationServicePortRange,
 			int numProxyThreads,
 			int numPQueryThreads,
 			int numServerThreads,
-			int numSQueryThreads) {
+			int numSQueryThreads,
+			int numLocationServiceThreads,
+			int numLocationServiceQueryThreads) {
 
 		checkArgument(proxyPortRange != null && proxyPortRange.hasNext());
 		checkArgument(qserverPortRange != null && qserverPortRange.hasNext());
+		checkArgument(locationServicePortRange != null && locationServicePortRange.hasNext());
+		checkArgument(locationServicePortRange != null && locationServicePortRange.hasNext());
 		checkArgument(numProxyThreads >= 0, "queryable state number of proxy threads must be zero or larger");
 		checkArgument(numPQueryThreads >= 0, "queryable state number of proxy query threads must be zero or larger");
 		checkArgument(numServerThreads >= 0, "queryable state number of server threads must be zero or larger");
 		checkArgument(numSQueryThreads >= 0, "queryable state number of query threads must be zero or larger");
+		checkArgument(numLocationServiceThreads >= 0, "queryable state number of location service threads must be zero or larger");
+		checkArgument(numLocationServiceQueryThreads >= 0, "queryable state number of location service query threads must be zero or larger");
 
 		this.proxyPortRange = proxyPortRange;
 		this.qserverPortRange = qserverPortRange;
+		this.locationServicePortRange = locationServicePortRange;
 		this.numProxyThreads = numProxyThreads;
 		this.numPQueryThreads = numPQueryThreads;
 		this.numServerThreads = numServerThreads;
 		this.numSQueryThreads = numSQueryThreads;
+		this.numLocationServiceThreads = numLocationServiceThreads;
+		this.numLocationServiceQueryThreads = numLocationServiceQueryThreads;
 	}
 
 	// ------------------------------------------------------------------------
@@ -85,7 +101,15 @@ public class QueryableStateConfiguration {
 	}
 
 	/**
-	 * Returns the number of threads for the query proxy NIO event loop.
+	 * Returns the port range where the queryable state location service can listen.
+	 * See {@link org.apache.flink.configuration.QueryableStateOptions#LOCATION_SERVICE_PORT_RANGE QueryableStateOptions.LOCATION_SERVICE_PORT_RANGE}.
+	 */
+	public Iterator<Integer> getLocationServicePortRange() {
+		return locationServicePortRange;
+	}
+
+	/**
+	 * Returns the number of threads for the query server NIO event loop.
 	 * These threads only process network events and dispatch query requests to the query threads.
 	 */
 	public int numProxyServerThreads() {
@@ -115,6 +139,14 @@ public class QueryableStateConfiguration {
 		return numSQueryThreads;
 	}
 
+	public int numLocationServiceThreads() {
+		return numLocationServiceThreads;
+	}
+
+	public int numLocationServiceQueryThreads() {
+		return numLocationServiceQueryThreads;
+	}
+
 	// ------------------------------------------------------------------------
 
 	@Override
@@ -124,6 +156,8 @@ public class QueryableStateConfiguration {
 				", numProxyQueryThreads=" + numPQueryThreads +
 				", numStateServerThreads=" + numServerThreads +
 				", numStateQueryThreads=" + numSQueryThreads +
+				", numLocationServiceThreads=" + numLocationServiceThreads +
+				", numLocationServiceQueryThreads=" + numLocationServiceQueryThreads +
 				'}';
 	}
 
@@ -133,9 +167,10 @@ public class QueryableStateConfiguration {
 	 * Gets the configuration describing the queryable state as deactivated.
 	 */
 	public static QueryableStateConfiguration disabled() {
+		final Iterator<Integer> locationServicePorts = NetUtils.getPortRangeFromString(QueryableStateOptions.LOCATION_SERVICE_PORT_RANGE.defaultValue());
 		final Iterator<Integer> proxyPorts = NetUtils.getPortRangeFromString(QueryableStateOptions.PROXY_PORT_RANGE.defaultValue());
 		final Iterator<Integer> serverPorts = NetUtils.getPortRangeFromString(QueryableStateOptions.SERVER_PORT_RANGE.defaultValue());
-		return new QueryableStateConfiguration(proxyPorts, serverPorts, 0, 0, 0, 0);
+		return new QueryableStateConfiguration(proxyPorts, serverPorts, locationServicePorts, 0, 0, 0, 0, 0, 0);
 	}
 
 	/**
@@ -146,10 +181,16 @@ public class QueryableStateConfiguration {
 			return null;
 		}
 
+		final Iterator<Integer> locationServicePorts = NetUtils.getPortRangeFromString(
+			config.getString(QueryableStateOptions.LOCATION_SERVICE_PORT_RANGE));
+
 		final Iterator<Integer> proxyPorts = NetUtils.getPortRangeFromString(
 			config.getString(QueryableStateOptions.PROXY_PORT_RANGE));
 		final Iterator<Integer> serverPorts = NetUtils.getPortRangeFromString(
 			config.getString(QueryableStateOptions.SERVER_PORT_RANGE));
+
+		final int numLocationServiceNetworkThreads = config.getInteger(QueryableStateOptions.LOCATION_SERVICE_NETWORK_THREADS);
+		final int numLocationServiceQueryThreads = config.getInteger(QueryableStateOptions.LOCATION_SERVICE_QUERY_THREADS);
 
 		final int numProxyServerNetworkThreads = config.getInteger(QueryableStateOptions.PROXY_NETWORK_THREADS);
 		final int numProxyServerQueryThreads = config.getInteger(QueryableStateOptions.PROXY_ASYNC_QUERY_THREADS);
@@ -160,9 +201,12 @@ public class QueryableStateConfiguration {
 		return new QueryableStateConfiguration(
 			proxyPorts,
 			serverPorts,
+			locationServicePorts,
 			numProxyServerNetworkThreads,
 			numProxyServerQueryThreads,
 			numStateServerNetworkThreads,
-			numStateServerQueryThreads);
+			numStateServerQueryThreads,
+			numLocationServiceNetworkThreads,
+			numLocationServiceQueryThreads);
 	}
 }

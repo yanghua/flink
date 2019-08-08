@@ -91,4 +91,5 @@ public class LegacyScheduler extends SchedulerBase {
 			executionGraph.failGlobal(t);
 		}
 	}
+
 }

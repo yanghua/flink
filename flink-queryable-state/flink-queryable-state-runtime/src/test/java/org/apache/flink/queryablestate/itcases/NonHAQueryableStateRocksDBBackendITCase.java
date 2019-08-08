@@ -48,6 +48,8 @@ public class NonHAQueryableStateRocksDBBackendITCase extends AbstractQueryableSt
 	private static final int QS_PROXY_PORT_RANGE_START = 9094;
 	private static final int QS_SERVER_PORT_RANGE_START = 9099;
 
+	private static final int QS_LOCATION_SERVICE_PORT_RANGE_START = 9520;
+
 	@Rule
 	public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
@@ -68,12 +70,16 @@ public class NonHAQueryableStateRocksDBBackendITCase extends AbstractQueryableSt
 	public static void setup() throws Exception {
 		client = new QueryableStateClient("localhost", QS_PROXY_PORT_RANGE_START);
 
+		useLocationServiceClient = new QueryableStateClient("localhost", QS_LOCATION_SERVICE_PORT_RANGE_START, true);
+
 		clusterClient = MINI_CLUSTER_RESOURCE.getClusterClient();
 	}
 
 	@AfterClass
 	public static void tearDown() {
 		client.shutdownAndWait();
+
+		useLocationServiceClient.shutdownAndWait();
 	}
 
 	private static Configuration getConfig() {
@@ -85,12 +91,19 @@ public class NonHAQueryableStateRocksDBBackendITCase extends AbstractQueryableSt
 		config.setInteger(QueryableStateOptions.CLIENT_NETWORK_THREADS, 1);
 		config.setInteger(QueryableStateOptions.PROXY_NETWORK_THREADS, 1);
 		config.setInteger(QueryableStateOptions.SERVER_NETWORK_THREADS, 1);
+		config.setInteger(QueryableStateOptions.LOCATION_SERVICE_QUERY_THREADS, 1);
+		config.setInteger(QueryableStateOptions.LOCATION_SERVICE_NETWORK_THREADS, 1);
 		config.setString(
 			QueryableStateOptions.PROXY_PORT_RANGE,
 			QS_PROXY_PORT_RANGE_START + "-" + (QS_PROXY_PORT_RANGE_START + NUM_TMS));
 		config.setString(
 			QueryableStateOptions.SERVER_PORT_RANGE,
 			QS_SERVER_PORT_RANGE_START + "-" + (QS_SERVER_PORT_RANGE_START + NUM_TMS));
+		config.setString(
+			QueryableStateOptions.LOCATION_SERVICE_PORT_RANGE,
+			QS_LOCATION_SERVICE_PORT_RANGE_START + "-" + (QS_LOCATION_SERVICE_PORT_RANGE_START + NUM_TMS));
+		config.setInteger(QueryableStateOptions.LOCATION_SERVICE_NETWORK_THREADS, 1);
+		config.setInteger(QueryableStateOptions.LOCATION_SERVICE_QUERY_THREADS, 1);
 		config.setBoolean(WebOptions.SUBMIT_ENABLE, false);
 		return config;
 	}
